@@ -5,8 +5,9 @@
 
 #include "Action.h"
 #include "Percept.h"
-#include "Location.h"
-#include "Orientation.h"
+#include "WorldState.h"
+//#include "Location.h"
+//#include "Orientation.h"
 
 class Agent
 {
@@ -19,9 +20,8 @@ public:
 	void updateLocation(bool bumped);
 	void GameOver (int score);
 
-	Location position;
-	bool has_gold, has_arrow, has_bumped_before;
-	Orientation orientation;
+	WorldState currentState;
+	bool hasBumpedBefore;
 };
 
 #endif // AGENT_H

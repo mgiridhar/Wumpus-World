@@ -9,7 +9,6 @@ using namespace std;
 Agent::Agent ()
 {
 	srand((int) time(0)); // to generate different random numbers when run every time
-	//WorldState currentState;
 }
 
 Agent::~Agent ()
@@ -19,11 +18,11 @@ Agent::~Agent ()
 
 void Agent::Initialize ()
 {
-	position = Location(1, 1);
-	has_gold = false;
-	has_arrow = true;
-	orientation = RIGHT;
-	has_bumped_before = false;
+	currentState.agentLocation = Location(1,1);
+	currentState.agentOrientation = RIGHT;
+        currentState.agentHasArrow = true;
+        currentState.agentHasGold = false;
+	hasBumpedBefore = false;
 }
 
 Action Agent::Process (Percept& percept)
@@ -31,31 +30,31 @@ Action Agent::Process (Percept& percept)
 	Action action;
 
 	//logic for going forward after getting bumped
-	if(has_bumped_before) {
+	if(hasBumpedBefore) {
 		action = GOFORWARD;
 		updateLocation(false);
-		has_bumped_before = false;
+		hasBumpedBefore = false;
 		return action;
 	}
 
 	//reflexes for model-based reflex agent
 	if(percept.Glitter) {
 		action = GRAB;
-		has_gold = true;
+		currentState.agentHasGold = true;
 	}
-	else if(position.X == 1 && position.Y == 1 && has_gold) {
+	else if(currentState.agentLocation.X == 1 && currentState.agentLocation.Y == 1 && currentState.agentHasGold) {
 		action = CLIMB;
 	}
-	else if(percept.Stench && has_arrow) {
+	else if(percept.Stench && currentState.agentHasArrow) {
 		action = SHOOT;
-		has_arrow = false;
+		currentState.agentHasArrow = false;
 	}
 	else if(percept.Bump) {
 		updateLocation(true);
 		action = TURNLEFT;
 		updateOrientation(action);
 		//logic for going forward...
-		has_bumped_before = true;
+		hasBumpedBefore = true;
 	}
 	else {
 		// Choose an action randomly from TURNLEFT, TURNRIGHT, GOFORWARD and update orientation or location accordingly
@@ -106,27 +105,27 @@ Action Agent::Process (Percept& percept)
 void Agent::updateOrientation (Action& action) {
 	//{RIGHT, UP, LEFT, DOWN}
 	if(action == TURNLEFT) {
-		this->orientation = (this->orientation == DOWN) ? RIGHT : Orientation(this->orientation + 1);
+		this->currentState.agentOrientation = (this->currentState.agentOrientation == DOWN) ? RIGHT : Orientation(this->currentState.agentOrientation + 1);
 	}
 	else if(action == TURNRIGHT) {
-		this->orientation = (this->orientation == RIGHT) ? DOWN : Orientation(this->orientation - 1);
+		this->currentState.agentOrientation = (this->currentState.agentOrientation == RIGHT) ? DOWN : Orientation(this->currentState.agentOrientation - 1);
 	}
 }
 
 void Agent::updateLocation (bool bumped) {
 	int step = (bumped) ? -1 : 1;
-	switch(this->orientation) {
+	switch(this->currentState.agentOrientation) {
 		case UP:
-			this->position.Y += step; 
+			this->currentState.agentLocation.Y += step; 
 			break;
 		case RIGHT:
-		       	this->position.X += step;
+		       	this->currentState.agentLocation.X += step;
 			break;
 		case DOWN:
-			this->position.Y -= step;
+			this->currentState.agentLocation.Y -= step;
 			break;
 		case LEFT:
-			this->position.X -= step;
+			this->currentState.agentLocation.X -= step;
 			break;
 		default:;
 	}
