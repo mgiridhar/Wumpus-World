@@ -1,16 +1,18 @@
-Wumpus Simulator v2.7 (released 10/27/2015)
+Wumpus Simulator v2.9 (released 09/15/2017)
 
-Copyright (c) 2015. Washington State University.
+Copyright (c) 2017. Washington State University.
 
 Written by Larry Holder (holder@wsu.edu).
 
-The Wumpus Simulator is a simple C++ framework for simulating the Wumpus World
+The Wumpus Simulator is a simple framework for simulating the Wumpus World
 describing in Russell and Norvig's "Artificial Intelligence: A Modern
-Approach". The idea is for you to modify the Agent.h and Agent.cc files to
-implement your super-smart agent. The agent provided simply accepts commands
-from the keyboard and executes them in the simulator. The keyboard commands are
-'f' for forward, 'l' for turnleft, 'r' for turnright, 'g' for grab, 's' for
-shoot, and 'c' for climb.
+Approach". The simulator is written in C++, but you can design your agent in
+either C++ or Python. The idea is for you to modify the Agent.h and Agent.cc
+(or PyAgent.py) files to implement your super-smart agent. The C++ agent
+provided simply accepts commands from the keyboard and executes them in the
+simulator.  The keyboard commands are 'f' for forward, 'l' for turnleft, 'r'
+for turnright, 'g' for grab, 's' for shoot, and 'c' for climb. The Python agent
+provided simply goes forward everytime.
 
 Quick Start
 -----------
@@ -20,6 +22,8 @@ has the 'make' program installed and a C++ compiler). Type 'make' to build the
 'wumpsim' executable. Then, type './wumpsim'. You should see a
 randomly-generated 4x4 world, information about the game state, and a prompt
 for the next action.When the game is over, scoring information is provided.
+
+If you want to code your agent in Python, see the "Python Agent" section below.
 
 Simulator Options
 -----------------
@@ -86,12 +90,48 @@ You may also take advantage of the other classes defined for the simulator
 (e.g., Percept, Action, Orientation, Location, WorldState, WumpusWorld) by
 including them directly, subclassing them, or borrowing code for your agent.
 Once your agent is complete, simply type 'make' to remake the simulator with
-your agent. Then run 'wumpsim' to try it out.
+your C++ agent. Then run 'wumpsim' to try it out. Or, for a Python agent,
+simply run 'pywumpsim'; no need to recompile the simulator.
+
+Python Agent
+------------
+
+You can also implement your agent in Python. First, you will need to compile a
+different version of the simulator that supports calling external Python agent
+functions. Instead of 'make' or 'make wumpsim', you should instead compile the
+simulator using 'make pywumpsim'. But before that, edit the Makefile to make
+sure the PYTHON_INC variable is set to the path where your system keeps the
+python header files (specifically, Python.h), and the PYTHON_LIB variable is
+set to the path where your system keeps the python library files. The values in
+this distribution are for a MacOS platform. This version assumes you are using
+Python 2.7. On some platforms you need to set the PYTHONPATH environment
+variable to your working directory, where pywumpsim and PyAgent.py reside.
+
+Next, you will make all your changes to the PyAgent.py file. You will see five
+functions in the file: PyAgent_Constructor, PyAgent_Destructor,
+PyAgent_Initialize, PyAgent_Process, and PyAgent_GameOver. These five functions
+are called by their counterparts in the Agent.h and Agent.cc files.  You can
+see how this is done in PyAgent.h and PyAgent.cc files, BUT DO NOT MODIFY THESE
+FILES. The only file you should change is PyAgent.py. Note that the
+PyAgent_Process function takes the five separate percepts, rather than a
+Percept class instance, and the PyAgent_Process function should return one of
+the six actions defined in the Action.py file.
+
+Once you've finished your PyAgent.py file, simply run the 'pywumpsim' program
+to test your agent. The PyAgent.py file and the 'pywumpsim' executable must be
+in the same directory. The 'pywumpsim' program accepts all the options
+described above for 'wumpsim'. And there is no need to recompile 'pywumpsim'
+after changes to PyAgent.py; this file is reloaded everytime 'pywumpsim' is
+executed.
 
 Happy hunting!
 
 History
 -------
+Version 2.9 (released 09/15/2017)
+- Added Action.py and Orientation.py files, which are imported into PyAgent.py
+Version 2.8 (released 09/06/2017)
+- Added ability to implement agent in Python
 Version 2.7 (released 10/27/2015)
 - Changes Location::operator== to const
 - Initialize uninitialized pointers to satisfy some compilers

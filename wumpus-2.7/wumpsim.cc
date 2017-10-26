@@ -9,8 +9,14 @@
 #include "Percept.h"
 #include "Action.h"
 #include "WumpusWorld.h"
-#include "Agent.h"
 #include "wumpsim.h"
+
+#ifdef PYTHON
+#include <Python.h>
+#include "PyAgent.h"
+#else
+#include "Agent.h"
+#endif
 
 using namespace std;
 
@@ -23,6 +29,18 @@ int main (int argc, char *argv[])
 	char* worldFile;
 	bool seedSet = false;
 	bool worldSet = false;
+
+#ifdef PYTHON
+	PyObject *pName, *pModule;
+	Py_Initialize();
+	pName = PyString_FromString("PyAgent");
+	pModule = PyImport_Import(pName);
+	if (pModule == NULL) {
+		cout << "pModule = NULL\n";
+		exit(1);
+	}
+	Py_DECREF(pName);
+#endif
 
 	// Process command-line options
 	int i = 1;
@@ -92,7 +110,11 @@ int main (int argc, char *argv[])
 			wumpusWorld = new WumpusWorld (worldSize);
 		}
 		//wumpusWorld->Write (".world");
+#ifdef PYTHON
+		agent = new Agent (pModule);
+#else
 		agent = new Agent ();
+#endif
 		trialScore = 0;
 		for (int tries = 1; tries <= numTries; tries++)
 		{
@@ -125,6 +147,11 @@ int main (int argc, char *argv[])
 	averageScore = ((float) totalScore) / ((float) (numTrials * numTries));
 	cout << "All trials completed: Average score for all trials = " << averageScore << endl;
 	cout << "Thanks for playing!" << endl << endl;
+
+#ifdef PYTHON
+	//Py_DECREF(pModule);
+	Py_Finalize();
+#endif
 
 	return 0;
 }
