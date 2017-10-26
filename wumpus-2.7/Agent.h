@@ -1,4 +1,6 @@
 // Agent.h
+//
+// HW2
 
 #ifndef AGENT_H
 #define AGENT_H
@@ -10,6 +12,10 @@
 #include "Orientation.h"
 #include "Search.h"
 #include <list>
+#include <map>
+#include <set>
+
+#include "WorldState.h"
 
 class Agent
 {
@@ -20,17 +26,19 @@ public:
 	Action Process (Percept& percept);
 	void GameOver (int score);
 
-	//bool agentHasGold;
-	//list<Action> actionList;
 	void UpdateState (Percept& percept);
-	void Move();
-	void addSafeLocations(int worldSize);
-	Location getNextLocation(Location loc, Orientation orient);
+	bool FacingDeath();
+	int Stench(int x, int y);
+	int Breeze(int x, int y);
+	void Infer(int x, int y);
 
-	WorldState worldState;
+	WorldState currentState;
+	Action lastAction;
+	Percept lastPercept;
 	list<Action> actionList;
-	Action previousAction;
-	Percept previousPercept;
+	int numActions;
+	map<int, map<int, bool> > stench_loc;
+	map<int, map<int, bool> > breeze_loc;
 
 	SearchEngine searchEngine;
 };

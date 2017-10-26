@@ -1,15 +1,19 @@
 // Agent.cc
+//
+// HW2
 
 #include <iostream>
 #include <list>
+#include <vector>
 #include "Agent.h"
 
 using namespace std;
 
 Agent::Agent ()
 {
-	worldState.worldSize = 1;
-	searchEngine.AddSafeLocation(1,1);
+	currentState.worldSize = 2; // at least 2x2
+	currentState.wumpusLocation = Location(0,0); // unknown
+	currentState.goldLocation = Location(0,0); // unknown
 }
 
 Agent::~Agent ()
@@ -19,167 +23,291 @@ Agent::~Agent ()
 
 void Agent::Initialize ()
 {
-	if(previousAction == GOFORWARD) {
-		Move();
-		int x = worldState.agentLocation.X;
-		int y = worldState.agentLocation.Y;
-		if(x > worldState.worldSize || y > worldState.worldSize){
-			worldState.worldSize++;
-			addSafeLocations(worldState.worldSize);
-			//for(int i=1; i<=worldState.worldSize; i++) {
-			//	searchEngine.AddSafeLocation(i, worldState.worldSize);
-			//	searchEngine.AddSafeLocation(worldState.worldSize, i);
-			//}
-		}
-		if(previousPercept.Stench && worldState.wumpusLocation == Location(0,0)) {
-			worldState.wumpusLocation = worldState.agentLocation;
-			cout << "Wumpus at (" << worldState.wumpusLocation.X << "," << worldState.wumpusLocation.Y << ")" << endl;
-		}
-		else if(previousPercept.Breeze) {
-			worldState.pitLocations.push_back(worldState.agentLocation);
-			cout << "Pit at (" << worldState.agentLocation.X << "," << worldState.agentLocation.Y << ")" << endl;
-		}
-		searchEngine.RemoveSafeLocation(x, y);
-	}
-
-	worldState.agentLocation = Location(1,1);
-	worldState.agentOrientation = RIGHT;
-	worldState.agentHasArrow = true;
-	worldState.agentHasGold = false;
+	currentState.agentLocation = Location(1,1);
+	currentState.agentOrientation = RIGHT;
+	currentState.agentHasArrow = true;
+	currentState.agentHasGold = false;
+	currentState.wumpusAlive = true;
 	actionList.clear();
-	previousAction = CLIMB; // dummy action to start
+	searchEngine.AddSafeLocation(1,1); // (1,1) always safe
+	// At start of game, wumpus is alive
+	searchEngine.RemoveSafeLocation(currentState.wumpusLocation.X, currentState.wumpusLocation.Y);
+	lastAction = CLIMB; // dummy action
+	numActions = 0;
 
+	//Pit and Wumpus Locations	
+	vector<Location>::iterator itr;
+	cout << "Pit Locations if inferred.." << endl;
+	for (itr = currentState.pitLocations.begin(); itr != currentState.pitLocations.end(); itr++) {
+		cout << "(" << itr->X << "," << itr->Y << ")" << endl;
+	}
+	cout << "Wumpus Location if inferred.." << endl;
+	if (!(currentState.wumpusLocation == Location(0,0))) {
+		cout << "(" << currentState.wumpusLocation.X << "," << currentState.wumpusLocation.Y << ")" << endl;
+	}
 }
 
 Action Agent::Process (Percept& percept)
 {
+	Action action;
 	list<Action> actionList2;
+	bool foundPlan = false;
 
+	lastPercept = percept;
 	UpdateState(percept);
-	if (actionList.empty()) {
+	
+	if(percept.Stench) {
+		stench_loc[currentState.agentLocation.X][currentState.agentLocation.Y] = true;
+	}
+	else {
+		stench_loc[currentState.agentLocation.X][currentState.agentLocation.Y] = false;
+	}
+	if(percept.Breeze) {
+		breeze_loc[currentState.agentLocation.X][currentState.agentLocation.Y] = true;
+	}
+	else {
+		breeze_loc[currentState.agentLocation.X][currentState.agentLocation.Y] = false;
+	}
+	Infer(currentState.agentLocation.X, currentState.agentLocation.Y);
 
-		if(!worldState.agentHasGold && !(worldState.goldLocation == Location(0,0))) {			
-			// Goto gold location and GRAB
-			cout << "Gold at Location (" << worldState.goldLocation.X << "," << worldState.goldLocation.Y << ")" << endl;
-			actionList2 = searchEngine.FindPath(worldState.agentLocation, worldState.agentOrientation, worldState.goldLocation, RIGHT);
-			actionList.splice(actionList.end(), actionList2);
+	if (actionList.empty()) {
+		foundPlan = false;
+		if ((! foundPlan) && percept.Glitter) {
 			actionList.push_back(GRAB);
+			foundPlan = true;
 		}
-		else if(worldState.agentHasGold && !(worldState.agentLocation == Location(1,1))) {
-			// Goto (1,1) and CLIMB
-			cout << "Agent has Gold. Heading back to (1,1)" << endl;
-			actionList2 = searchEngine.FindPath(worldState.agentLocation, worldState.agentOrientation, Location(1,1), LEFT);
-			actionList.splice(actionList.end(), actionList2);
+		if ((! foundPlan) && currentState.agentHasGold && (currentState.agentLocation == Location(1,1))) {
 			actionList.push_back(CLIMB);
+			foundPlan = true;
 		}
-		else if (percept.Glitter) { // Rule 4a
-			worldState.goldLocation = worldState.agentLocation;
-			cout << "Gold at Location (" << worldState.goldLocation.X << "," << worldState.goldLocation.Y << ")" << endl;
-			actionList.push_back(GRAB);
-		} else if (worldState.agentHasGold && (worldState.agentLocation == Location(1,1))) { // Rule 4b
-			actionList.push_back(CLIMB);
-		} else if (percept.Stench && worldState.agentHasArrow) { // Rule 4c
+		if ((! foundPlan) && (! (currentState.goldLocation == Location(0,0))) && (! currentState.agentHasGold)) {
+			// If know gold location, but don't have it, then find path to it
+			actionList2 = searchEngine.FindPath(currentState.agentLocation, currentState.agentOrientation, currentState.goldLocation, UP);
+			if (actionList2.size() > 0) {
+				actionList.splice(actionList.end(), actionList2);
+				foundPlan = true;
+			}
+		}
+		if ((! foundPlan) && currentState.agentHasGold) {
+			// If have gold, then find path to (1,1)
+			actionList2 = searchEngine.FindPath(currentState.agentLocation, currentState.agentOrientation, Location(1,1), DOWN);
+			if (actionList2.size() > 0) {
+				actionList.splice(actionList.end(), actionList2);
+				foundPlan = true;
+			}
+		}
+		if ((! foundPlan) && percept.Stench && currentState.agentHasArrow) {
 			actionList.push_back(SHOOT);
-		} else if (percept.Bump) { // Rule 4d
+			foundPlan = true;
+		}
+		if ((! foundPlan) && percept.Bump) {
 			actionList.push_back(TURNLEFT);
 			actionList.push_back(GOFORWARD);
-		} else { // Rule 4e
-			int randomActionIndex = rand() % 3; // 0=GOFORWARD, 1=TURNLEFT, 2=TURNRIGHT
-			Action randomAction = (Action) randomActionIndex;
-			actionList.push_back(randomAction);
+			foundPlan = true;
+		}
+		if (! foundPlan) {
+			// Random move
+			action = (Action) (rand() % 3);
+			while((action == GOFORWARD) && FacingDeath()) {
+				cout << "Going Forward is danger... Changing Action" << endl;
+				action = (Action) (rand() % 3);
+			}
+			actionList.push_back(action);
+			foundPlan = true;
 		}
 	}
-	Action action = actionList.front();
+	action = actionList.front();
 	actionList.pop_front();
-	previousAction = action;
-	previousPercept = percept;
+	// One final check that we aren't moving to our death
+    	if ((action == GOFORWARD) && FacingDeath()) {
+		cout << "Going Forward is danger... Changing Action" << endl;
+    		action = TURNLEFT;
+    	}
+	lastAction = action;
+	numActions++;
 	//cin.get();
 	return action;
 }
 
+void Agent::UpdateState (Percept& percept)
+{
+	// Check if wumpus killed
+	if (percept.Scream)
+	{
+		currentState.wumpusAlive = false;
+		// Since only kill wumpus point-blank, we know its location is in front of agent
+		currentState.wumpusLocation = currentState.agentLocation;
+		switch (currentState.agentOrientation)
+		{
+			case RIGHT: currentState.wumpusLocation.X++; break;
+			case UP: currentState.wumpusLocation.Y++; break;
+			case LEFT: currentState.wumpusLocation.X--; break;
+			case DOWN: currentState.wumpusLocation.Y--; break;
+		}
+	}
+	// Check if have gold
+	if (lastAction == GRAB)
+	{
+		currentState.agentHasGold = true;
+		currentState.goldLocation = currentState.agentLocation;
+	}
+	// Check if used arrow
+	if (lastAction == SHOOT)
+	{
+		currentState.agentHasArrow = false;
+	}
+	// Update orientation
+	if (lastAction == TURNLEFT)
+	{
+		currentState.agentOrientation = (Orientation) ((currentState.agentOrientation + 1) % 4);
+	}
+	if (lastAction == TURNRIGHT)
+	{
+		currentState.agentOrientation = (Orientation) ((currentState.agentOrientation + 3) % 4);
+	}
+	// Update location
+	if ((lastAction == GOFORWARD) && (! percept.Bump))
+	{
+		switch (currentState.agentOrientation)
+		{
+			case RIGHT: currentState.agentLocation.X++; break;
+			case UP: currentState.agentLocation.Y++; break;
+			case LEFT: currentState.agentLocation.X--; break;
+			case DOWN: currentState.agentLocation.Y--; break;
+		}
+	}
+	// Update world size
+	if (currentState.agentLocation.X > currentState.worldSize)
+	{
+		currentState.worldSize = currentState.agentLocation.X;
+	}
+	if (currentState.agentLocation.Y > currentState.worldSize)
+	{
+		currentState.worldSize = currentState.agentLocation.Y;
+	}
+	// Update safe locations in search engine
+	int x = currentState.agentLocation.X;
+	int y = currentState.agentLocation.Y;
+	searchEngine.AddSafeLocation(x,y);
+	if ((! percept.Breeze) && ((! percept.Stench) || (! currentState.wumpusAlive)))
+	{
+		if (x > 1) searchEngine.AddSafeLocation(x-1,y);
+		if (y > 1) searchEngine.AddSafeLocation(x,y-1);
+		// Add safe location to the right and up, if doesn't exceed our current estimate of world size
+		if (x < currentState.worldSize) searchEngine.AddSafeLocation(x+1,y);
+		if (y < currentState.worldSize) searchEngine.AddSafeLocation(x,y+1);
+	}
+}
+
+bool Agent::FacingDeath()
+{
+	int x = currentState.agentLocation.X;
+	int y = currentState.agentLocation.Y;
+	Orientation orientation = currentState.agentOrientation;
+	if (orientation == RIGHT) {
+		x++;
+	}
+	if (orientation == UP) {
+		y++;
+	}
+	if (orientation == LEFT) {
+		x--;
+	}
+	if (orientation == DOWN) {
+		y--;
+	}
+	vector<Location>::iterator itr;
+	Location facingLoc = Location(x,y);
+	for (itr = currentState.pitLocations.begin(); itr != currentState.pitLocations.end(); itr++) {
+		if (*itr == facingLoc) {
+			return true;
+		}
+	}
+	if ((currentState.wumpusLocation == facingLoc) && currentState.wumpusAlive) {
+		return true;
+	}
+    return false;
+}
+
+// 0 - false
+// 1 - true
+// 2 - unknown
+
+int Agent::Stench(int x, int y) {
+	if(stench_loc.find(x) != stench_loc.end() && stench_loc[x].find(y) != stench_loc[x].end()) {
+		return stench_loc[x][y] ? 1 : 0;
+	}
+	return 2;
+}
+
+int Agent::Breeze(int x, int y) {
+	if(breeze_loc.find(x) != breeze_loc.end() && breeze_loc[x].find(y) != breeze_loc[x].end()) {
+		return breeze_loc[x][y] ? 1 : 0;
+	}
+	return 2;
+}
+
+void Agent::Infer(int x, int y) {
+	if(currentState.wumpusLocation == Location(0,0))
+	{
+		//inferring wumpus location
+		if(Stench(x,y) < 2 && Stench(x+1,y+1) < 2 && Stench(x,y+1) < 2 && Stench(x,y) && Stench(x+1,y+1) && !Stench(x,y+1)) {
+			currentState.wumpusLocation = Location(x+1,y);
+		}
+		else if(Stench(x,y) < 2 && Stench(x+1,y+1) < 2 && Stench(x+1,y) < 2 && Stench(x,y) && Stench(x+1,y+1) && !Stench(x+1,y)) {
+			currentState.wumpusLocation = Location(x,y+1);
+		}
+		else if(Stench(x,y) < 2 && Stench(x+1,y-1) < 2 && Stench(x,y-1) < 2 && Stench(x,y) && Stench(x+1,y-1) && !Stench(x,y-1)) {
+			currentState.wumpusLocation = Location(x+1,y);
+		}
+		else if(Stench(x,y)<2 && Stench(x-1,y+1)<2 && Stench(x,y+1)<2 && Stench(x,y) && Stench(x-1,y+1) && !Stench(x,y+1)) {
+			currentState.wumpusLocation = Location(x-1,y);
+		}	
+	}
+
+	//inferring pit locations
+	if(Breeze(x,y)<2 && Breeze(x-1,y)<2 && Breeze(x,y+1)<2 && Breeze(x+1,y)<2 && Breeze(x,y) && !Breeze(x-1,y) && !Breeze(x,y+1) && !Breeze(x+1,y)) {
+	    	currentState.pitLocations.push_back(Location(x,y-1));
+	}
+	if(Breeze(x,y)<2 && Breeze(x-1,y)<2 && Breeze(x,y+1)<2 && Breeze(x,y-1)<2 && Breeze(x,y) && !Breeze(x-1,y) && !Breeze(x,y+1) && !Breeze(x,y-1)) {
+		currentState.pitLocations.push_back(Location(x+1,y));
+	}
+	if(Breeze(x,y)<2 && Breeze(x-1,y)<2 && Breeze(x,y-1)<2 && Breeze(x+1,y)<2 && Breeze(x,y) && !Breeze(x-1,y) && !Breeze(x,y-1) && !Breeze(x+1,y)) {
+		currentState.pitLocations.push_back(Location(x,y+1));
+	}
+	if(Breeze(x,y)<2 && Breeze(x,y-1)<2 && Breeze(x+1,y)<2 && Breeze(x,y+1)<2 && Breeze(x,y) && !Breeze(x,y-1) && !Breeze(x+1,y) && !Breeze(x,y+1)) {
+		currentState.pitLocations.push_back(Location(x-1,y));
+	}
+}
+
 void Agent::GameOver (int score)
 {
-
-}
-
-void Agent::UpdateState (Percept& percept) {
-	int orientationInt = (int) worldState.agentOrientation;
-	switch (previousAction) {
-	case GOFORWARD:
-		if (! percept.Bump) {
-			Move();
-			if(worldState.agentLocation.X > worldState.worldSize || worldState.agentLocation.Y > worldState.worldSize){
-				worldState.worldSize++;
-				addSafeLocations(worldState.worldSize);
-			}
-		}
-		break;
-	case TURNLEFT:
-		worldState.agentOrientation = (Orientation) ((orientationInt + 1) % 4);
-		break;
-	case TURNRIGHT:
-		orientationInt--;
-		if (orientationInt < 0) orientationInt = 3;
-		worldState.agentOrientation = (Orientation) orientationInt;
-		break;
-	case GRAB:
-		worldState.agentHasGold = true; // Only GRAB when there's gold
-		break;
-	case SHOOT:
-		worldState.agentHasArrow = false;
-		if(percept.Scream) {
-			worldState.wumpusLocation = getNextLocation(worldState.agentLocation, worldState.agentOrientation);
-			cout << "Wumpus at (" << worldState.wumpusLocation.X << "," << worldState.wumpusLocation.Y << ")" << endl;
-			if(worldState.wumpusLocation.X > worldState.worldSize || worldState.wumpusLocation.Y > worldState.worldSize){
-				worldState.worldSize++;
-				addSafeLocations(worldState.worldSize);
-			}
-			searchEngine.RemoveSafeLocation(worldState.wumpusLocation.X, worldState.wumpusLocation.Y);
-		}
-		break;
-	case CLIMB:
-		break;
-	}
-}
-	
-void Agent::Move() {
-	switch (worldState.agentOrientation) {
-	case RIGHT:
-		worldState.agentLocation.X++;
-		break;
-	case UP:
-		worldState.agentLocation.Y++;
-		break;
-	case LEFT:
-		worldState.agentLocation.X--;
-		break;
-	case DOWN:
-		worldState.agentLocation.Y--;
-		break;
+	if ((score < 0) and (numActions < 1000)) {
+		// Agent died by GOFORWARD into location with wumpus or pit, so make that location unsafe
+		int x = currentState.agentLocation.X;
+		int y = currentState.agentLocation.Y;
+	    Orientation orientation = currentState.agentOrientation;
+	    if (orientation == RIGHT) {
+	    	x++;
+	    }
+	    if (orientation == UP) {
+	    	y++;
+	    }
+	    if (orientation == LEFT) {
+	    	x--;
+	    }
+	    if (orientation == DOWN) {
+	    	y--;
+	    }
+	    if (lastPercept.Breeze && (! lastPercept.Stench)) {
+	    	currentState.pitLocations.push_back(Location(x,y));
+		//searchEngine.RemoveSafeLocation(x, y);
+	    }
+	    if (lastPercept.Stench && (! lastPercept.Breeze)) {
+	    	currentState.wumpusLocation = Location(x,y);
+	    }
 	}
 }
 
-void Agent::addSafeLocations(int worldSize) {
-	for(int i=1; i<=worldSize; i++) {
-		searchEngine.AddSafeLocation(i, worldSize);
-		searchEngine.AddSafeLocation(worldSize, i);
-	}
-}
 
-Location Agent::getNextLocation(Location loc, Orientation orient) {
-	switch (orient) {
-	case RIGHT:
-		loc.X++;
-		break;
-	case UP:
-		loc.Y++;
-		break;
-	case LEFT:
-		loc.X--;
-		break;
-	case DOWN:
-		loc.Y--;
-		break;
-	}
-	return loc;
-}
+
