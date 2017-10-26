@@ -14,6 +14,10 @@ Agent::Agent ()
 	currentState.worldSize = 2; // at least 2x2
 	currentState.wumpusLocation = Location(0,0); // unknown
 	currentState.goldLocation = Location(0,0); // unknown
+	breezes = vector< vector<int> >(5, vector<int>(5, -1));
+	pits = vector< vector<double> >(5, vector<double>(5, 0.2));
+	pits[1][1] = 0.0;
+	knownSet.insert(make_pair(1,1));
 }
 
 Agent::~Agent ()
@@ -56,6 +60,8 @@ Action Agent::Process (Percept& percept)
 	lastPercept = percept;
 	UpdateState(percept);
 	
+	/*
+	 * Logical Inference *
 	if(percept.Stench) {
 		stench_loc[currentState.agentLocation.X][currentState.agentLocation.Y] = true;
 	}
@@ -69,6 +75,29 @@ Action Agent::Process (Percept& percept)
 		breeze_loc[currentState.agentLocation.X][currentState.agentLocation.Y] = false;
 	}
 	Infer(currentState.agentLocation.X, currentState.agentLocation.Y);
+	*/
+
+	if(percept.Breeze) {
+		if(breezeSet.find(make_pair(currentState.agentLocation.X, currentState.agentLocation.Y)) == breezeSet.end()) {
+			breezeSet.insert(make_pair(currentState.agentLocation.X, currentState.agentLocation.Y));
+			breezes[currentState.agentLocation.X][currentState.agentLocation.Y] = 1;
+			addToFrontier(currentState.agentLocation.X, currentState.agentLocation.Y);
+		}	
+	}
+	else {
+		if(breezeSet.find(make_pair(currentState.agentLocation.X, currentState.agentLocation.Y)) == breezeSet.end()) {
+			breezeSet.insert(make_pair(currentState.agentLocation.X, currentState.agentLocation.Y));
+			breezes[currentState.agentLocation.X][currentState.agentLocation.Y] = 0;
+			updatePitProbs(currentState.agentLocation.X, currentState.agentLocation.Y);
+		}
+	}
+	
+	if(knownSet.find(make_pair(currentState.agentLocation.X, currentState.agentLocation.Y)) == knownSet.end()) {
+		knownSet.insert(make_pair(currentState.agentLocation.X, currentState.agentLocation.Y));
+		pits[currentState.agentLocation.X][currentState.agentLocation.Y] = 0.0;
+		if(frontierSet.find(make_pair(currentState.agentLocation.X, currentState.agentLocation.Y)) != frontierSet.end())
+			frontierSet.erase(make_pair(currentState.agentLocation.X, currentState.agentLocation.Y));
+	}
 
 	if (actionList.empty()) {
 		foundPlan = false;
@@ -125,7 +154,7 @@ Action Agent::Process (Percept& percept)
     	}
 	lastAction = action;
 	numActions++;
-	//cin.get();
+	cin.get();
 	return action;
 }
 
@@ -226,9 +255,207 @@ bool Agent::FacingDeath()
 	if ((currentState.wumpusLocation == facingLoc) && currentState.wumpusAlive) {
 		return true;
 	}
+
+	//check probability of pit in this location
+	double prob = getPitProb(x,y);
+	cout << "Probability of pit ahead: " << prob << endl;
+	if(prob >= 0.5)
+		return true;
+
     return false;
 }
 
+void Agent::addToFrontier(int x, int y) {
+	if(y-1 > 0 && knownSet.find(make_pair(x, y-1)) == knownSet.end() && frontierSet.find(make_pair(x,y-1)) == frontierSet.end()) {
+		frontierSet.insert(make_pair(x, y-1));
+	}
+	if(x-1 > 0 && knownSet.find(make_pair(x-1, y)) == knownSet.end() && frontierSet.find(make_pair(x-1,y)) == frontierSet.end()) {
+		frontierSet.insert(make_pair(x-1, y));
+	}
+	if(y+1 < 5 && knownSet.find(make_pair(x, y+1)) == knownSet.end() && frontierSet.find(make_pair(x,y+1)) == frontierSet.end()) {
+		frontierSet.insert(make_pair(x, y+1));
+	}
+	if(x+1 < 5 && knownSet.find(make_pair(x+1, y)) == knownSet.end() && frontierSet.find(make_pair(x+1,y)) == frontierSet.end()) {
+		frontierSet.insert(make_pair(x+1, y));
+	}
+}
+
+void Agent::updatePitProbs(int x, int y) {
+	if(y-1 > 0) {
+	       	pits[x][y-1] = 0.0;	
+		if(knownSet.find(make_pair(x, y-1)) == knownSet.end())
+		       knownSet.insert(make_pair(x, y-1));
+		if(frontierSet.find(make_pair(x,y-1)) != frontierSet.end())
+			frontierSet.erase(make_pair(x, y-1));
+	}
+	if(x-1 > 0) { 
+	       	pits[x-1][y] = 0.0;	
+		if(knownSet.find(make_pair(x-1, y)) == knownSet.end())
+		       knownSet.insert(make_pair(x-1, y));
+		if(frontierSet.find(make_pair(x-1,y)) != frontierSet.end())
+			frontierSet.erase(make_pair(x-1, y));
+	}
+	if(y+1 < 5) { 
+	       	pits[x][y+1] = 0.0;	
+		if(knownSet.find(make_pair(x, y+1)) == knownSet.end())
+		       knownSet.insert(make_pair(x, y+1));
+		if(frontierSet.find(make_pair(x,y+1)) != frontierSet.end())
+			frontierSet.erase(make_pair(x, y+1));
+	}
+	if(x+1 < 5) { 
+	       	pits[x+1][y] = 0.0;
+		if(knownSet.find(make_pair(x+1, y)) == knownSet.end())
+		       knownSet.insert(make_pair(x+1, y));
+		if(frontierSet.find(make_pair(x+1,y)) != frontierSet.end())
+			frontierSet.erase(make_pair(x+1, y));
+	}
+}
+
+double Agent::getPitProb(int x, int y) {
+	if(x <= 0 || x >= 5 || y <= 0 || y >= 5 )
+		return 0.0;
+	if(knownSet.find(make_pair(x,y)) != knownSet.end()) 
+		return pits[x][y];
+	if(frontierSet.find(make_pair(x,y)) != frontierSet.end()) {
+		double yes = 0.2, no = 0.8;
+		set< pair<int,int> >::iterator it;
+		set< pair<int,int> > tempBreezeSet;
+		//pair<int, int> startBreeze;
+		for(it = frontierSet.begin(); it != frontierSet.end(); it++) {
+			if(breezeSet.find(make_pair(it->first, it->second-1)) != breezeSet.end() && breezes[it->first][it->second-1] == 1) {
+				tempBreezeSet.insert(make_pair(it->first, it->second-1));
+				//if(it->first == x && it->second == y)
+				//	startBreeze = make_pair(it->first, it->second-1);
+			}
+			if(breezeSet.find(make_pair(it->first-1, it->second)) != breezeSet.end() && breezes[it->first-1][it->second] == 1) {
+				tempBreezeSet.insert(make_pair(it->first-1, it->second));
+				//if(it->first == x && it->second == y)
+				//	startBreeze = make_pair(it->first-1, it->second);
+			}
+			if(breezeSet.find(make_pair(it->first, it->second+1)) != breezeSet.end() && breezes[it->first][it->second+1] == 1) {
+				tempBreezeSet.insert(make_pair(it->first, it->second+1));
+				//if(it->first == x && it->second == y)
+				//	startBreeze = make_pair(it->first, it->second+1);
+			}
+			if(breezeSet.find(make_pair(it->first+1, it->second)) != breezeSet.end() && breezes[it->first+1][it->second] == 1) {
+				tempBreezeSet.insert(make_pair(it->first+1, it->second));
+				//if(it->first == x && it->second == y)
+				//	startBreeze = make_pair(it->first+1, it->second);
+			}
+		}
+		frontierSet.erase(make_pair(x,y));
+		vector< pair<int, int> > frontBreezeList(tempBreezeSet.begin(), tempBreezeSet.end()), frontierList(frontierSet.begin(), frontierSet.end());
+		/*frontBreezeList.push_back(startBreeze);
+		for(set< pair<int, int> >::iterator b = tempBreezeSet.begin(); b != tempBreezeSet.end(); b++) {
+			frontBreezeList.push_back(*b);
+		}*/
+		
+		/*cout << "Calculating probabilities.. " << endl;
+		cout << "Breezes " << endl;
+		//frontiers and breezes
+		for(int i=0; i<frontBreezeList.size(); i++) {
+			cout << frontBreezeList[i].first << " " << frontBreezeList[i].second << endl;
+		}
+		cout << "Frontiers " << endl;
+		for(it = frontierSet.begin(); it != frontierSet.end(); it++) {
+			cout << it->first << " " << it->second << endl;
+		}
+		*/
+
+		vector< vector<bool> > pitPresent(6, vector<bool>(6, false));
+		pitPresent[x][y] = true;
+		double sum = 0.0;
+		//calcPosProb(frontBreezeList, 0, frontierSet, frontierSet.begin(), pitPresent, 1, sum);
+		calcProbs(frontierList, 0, frontBreezeList, 1, sum, pitPresent);
+		yes = yes * sum;
+		//cout << "Yes: " << yes << endl;
+
+		pitPresent = vector<vector<bool> >(6, vector<bool>(6, false));
+		pitPresent[x][y] = false;
+		sum = 0.0;
+		//calcPosProb(frontBreezeList, 0, frontierSet, frontierSet.begin(), pitPresent, 1, sum);
+		calcProbs(frontierList, 0, frontBreezeList, 1, sum, pitPresent);
+		no = no * sum;
+		//cout << "No: " << no << endl;
+
+		frontierSet.insert(make_pair(x,y));
+
+		return yes / (yes + no);
+	}
+	return 0.2;
+}
+
+void Agent::calcProbs(vector< pair<int,int> > frontierList, int fl, vector< pair<int,int> > frontBreezeList, double currProb, double &sum, vector< vector<bool> > pitPresent) {
+	if(fl >= frontierList.size()) {
+		if(consistentSetting(frontBreezeList, pitPresent)) {
+			sum += currProb;
+		}
+		return;
+	}
+	
+	pitPresent[frontierList[fl].first][frontierList[fl].second] = true;
+	calcProbs(frontierList, fl+1, frontBreezeList, currProb * 0.2, sum, pitPresent);
+
+	pitPresent[frontierList[fl].first][frontierList[fl].second] = false;
+	calcProbs(frontierList, fl+1, frontBreezeList, currProb * 0.8, sum, pitPresent);
+}
+
+bool Agent::consistentSetting(vector< pair<int,int> > frontBreezeList, vector< vector<bool> > pitPresent) {
+	for(int i=0; i<frontBreezeList.size(); i++) {
+		int x = frontBreezeList[i].first;
+		int y = frontBreezeList[i].second;
+		if(!(pitPresent[x][y-1] || pitPresent[x-1][y] || pitPresent[x][y+1] || pitPresent[x+1][y]))
+			return false;
+	}
+	return true;
+}
+
+/*
+void Agent::calcPosProb(vector< pair<int,int> > frontBreezeList, int br, set< pair<int,int> > frontierSet, set< pair<int,int> >::iterator fr_it, vector< vector<bool> > pitPresent, double currProb,  double &sum) {
+	if(br >= frontBreezeList.size()) {
+		sum += currProb;
+		return;
+	}
+	if(fr_it == frontierSet.end()) {
+		return;
+	}
+	if(pitPresent[fr_it->first][fr_it->second]) {
+		//is near?
+		pair<int, int> temp = frontBreezeList[br];
+		if((temp.first == fr_it->first && temp.second-1 == fr_it->second) || (temp.first-1 == fr_it->first && temp.second == fr_it->second) || (temp.first == fr_it->first && temp.second+1 == fr_it->second) || (temp.first+1 == fr_it->first && temp.second == fr_it->second))
+			calcPosProb(frontBreezeList, br+1, frontierSet, next(fr_it), pitPresent, currProb, sum);
+		else
+			calcPosProb(frontBreezeList, br, frontierSet, next(fr_it), pitPresent, currProb, sum);
+
+		return;
+	}
+
+	if(frontBreezeList[br].first == fr_it->first && frontBreezeList[br].second-1 == fr_it->second) {
+		calcPosProb(frontBreezeList, br, frontierSet, next(fr_it), pitPresent, currProb * 0.8, sum);
+		pitPresent[fr_it->first][fr_it->second] = true;
+		calcPosProb(frontBreezeList, br+1, frontierSet, next(fr_it), pitPresent, currProb * 0.2, sum);
+		pitPresent[fr_it->first][fr_it->second] = false;
+	}
+	if(frontBreezeList[br].first-1 == fr_it->first && frontBreezeList[br].second == fr_it->second) {
+		calcPosProb(frontBreezeList, br, frontierSet, next(fr_it), pitPresent, currProb * 0.8, sum);
+		pitPresent[fr_it->first][fr_it->second] = true;
+		calcPosProb(frontBreezeList, br+1, frontierSet, next(fr_it), pitPresent, currProb * 0.2, sum);
+		pitPresent[fr_it->first][fr_it->second] = false;
+	}
+	if(frontBreezeList[br].first == fr_it->first && frontBreezeList[br].second+1 == fr_it->second) {
+		calcPosProb(frontBreezeList, br, frontierSet, next(fr_it), pitPresent, currProb * 0.8, sum);
+		pitPresent[fr_it->first][fr_it->second] = true;
+		calcPosProb(frontBreezeList, br+1, frontierSet, next(fr_it), pitPresent, currProb * 0.2, sum);
+		pitPresent[fr_it->first][fr_it->second] = false;
+	}
+	if(frontBreezeList[br].first+1 == fr_it->first && frontBreezeList[br].second == fr_it->second) {
+		calcPosProb(frontBreezeList, br, frontierSet, next(fr_it), pitPresent, currProb * 0.8, sum);
+		pitPresent[fr_it->first][fr_it->second] = true;
+		calcPosProb(frontBreezeList, br+1, frontierSet, next(fr_it), pitPresent, currProb * 0.2, sum);
+		pitPresent[fr_it->first][fr_it->second] = false;
+	}
+}
+*/
 // 0 - false
 // 1 - true
 // 2 - unknown
@@ -301,6 +528,12 @@ void Agent::GameOver (int score)
 	    }
 	    if (lastPercept.Breeze && (! lastPercept.Stench)) {
 	    	currentState.pitLocations.push_back(Location(x,y));
+		if(knownSet.find(make_pair(x,y)) == knownSet.end()) {
+			knownSet.insert(make_pair(x,y));
+			pits[x][y] = 1.0;
+			if(frontierSet.find(make_pair(x,y)) != frontierSet.end())
+				frontierSet.erase(make_pair(x,y));	
+		}
 		//searchEngine.RemoveSafeLocation(x, y);
 	    }
 	    if (lastPercept.Stench && (! lastPercept.Breeze)) {
